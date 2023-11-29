@@ -279,13 +279,15 @@ func (cmd CmdGo) String() string {
 	return strings.Join(a, " ")
 }
 
+// My patch: only used in ProcessResponse, but this keeps it from being recompiled with every function call
+var processRegex = regexp.MustCompile("multipv (\\d+) score cp (-?\\d+) .+ time (\\d+) pv (.+|\\s+)")
+
 // ProcessResponse implements the Cmd interface
 func (cmd CmdGo) ProcessResponse(e *Engine) error {
 	scanner := bufio.NewScanner(e.out)
 	results := SearchResults{}
 	//My patch
-	//This WILL unnecessarily recompile the Regex with each call. Could potentially be broken out TODO?
-	regex := regexp.MustCompile("multipv (\\d+) score cp (-?\\d+) .+ time (\\d+) pv (.+|\\s+)")
+
 	PVArray := make([]PV, cmd.MultiPV)
 	info := &Info{PVs: PVArray}
 	//My patch ends --------
@@ -311,10 +313,13 @@ func (cmd CmdGo) ProcessResponse(e *Engine) error {
 			break
 		} else if strings.HasPrefix(text, "info depth "+strconv.Itoa(cmd.Depth)) {
 			//My patch - this vile logic
-			matches := regex.FindStringSubmatch(text)
+			matches := processRegex.FindStringSubmatch(text)
 			//whole string(?), then captures
 			if len(matches) != 5 {
-				return errors.New("regex didn't match right: " + text) //TODO not great way to do errors
+				//We can get perfectly valid info messages that DON'T have all the info about the PV we need
+				//Rather than try to screen them out explicitly with the above conditional, catching them after
+				//Seems safest.
+				continue
 			}
 			newPVRank, err := strconv.Atoi(matches[1])
 			if err != nil {
